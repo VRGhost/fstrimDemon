@@ -4,7 +4,7 @@ if [ "${MODE}" = "DEBUG" ]; then
 	source "${ETC_PATH}/conf.d/fstrimDemon"
 else
 	# Deployment mode
-	source /etc/conf.d/fstrimDemon
+	source /etc/fstrimDemon
 fi
 
 

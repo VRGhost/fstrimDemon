@@ -1,0 +1,9 @@
+*.swp
+*~
+.*
+*.sublime-workspace
+*.py?
+/_env
+/tmp/*
+distribute*.tar.gz
+*.sqlite_db
