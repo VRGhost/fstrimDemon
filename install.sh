@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo Installing fstrimDemon...
+echo Installing fstrimDaemon...
 
 DIR=`dirname $0`
 

@@ -1,8 +1,5 @@
 # /etc/conf.d/fstrimDemon: config file for /etc/init.d/fstrimDemon
 
-# Directory for which fstrim will be run
-TRIM_DIR="/"
-
 # Time to wait after demon start to perform first fstrim
 # e.g. "30m" - 30 minutes. See man sleep.
 SLEEP_AT_START="2h"

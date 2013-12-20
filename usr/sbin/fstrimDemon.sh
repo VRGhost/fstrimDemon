@@ -1,6 +1,11 @@
 #!/bin/bash
 
-source /etc/conf.d/fstrimDemon
+if [ "${MODE}" = "DEBUG" ]; then
+	source "${ETC_PATH}/conf.d/fstrimDemon"
+else
+	# Deployment mode
+	source /etc/conf.d/fstrimDemon
+fi
 
 
 SLEEP_CMD="sleep"
@@ -8,11 +13,13 @@ SLEEP_CMD="sleep"
 
 # We divide sleep for smaller portions in order to protect
 # against being awaken when computer resume from suspension
-vigilanSleep()
+function vigilantSleep()
 {
 	local VAL=${1%?}
 
-	if   [[ "$1" == *m ]] ; then
+	if   [[ "$1" == *s ]] ; then
+		local MULTIPLEXER=1
+	elif   [[ "$1" == *m ]] ; then
 		local MULTIPLEXER=60
 	elif [[ "$1" == *h ]] ; then
 		local MULTIPLEXER=60*60
@@ -34,41 +41,61 @@ vigilanSleep()
 }
 
 
-CORES=`grep 'model name' /proc/cpuinfo | wc -l`
-U_MAX_CPU_LOAD=`echo "0${CORES} * 0${MAX_CPU_LOAD}" | bc -l`
-#echo debug: U_MAX_CPU_LOAD=${U_MAX_CPU_LOAD}
+U_MAX_CPU_LOAD=$(echo "$(nproc) * ${MAX_CPU_LOAD}" | bc -l)
 
-waitForLowCpuLoad()
+function waitForLowCpuLoad()
 {
-	local CPU_LOAD=999999
-	while true ; do
-		local CPU_LOAD=`cut -f 1 -d" " /proc/loadavg`
-		local TMP=`cut -f 2 -d" " /proc/loadavg`
-		local DIFF=`echo "${CPU_LOAD} < ${TMP}" | bc -l`
-		if [ `echo "${CPU_LOAD} < ${TMP}" | bc -l` = 1 ] ; then
-			local CPU_LOAD=${TMP}
-		fi
-		local TMP=`cut -f 3 -d" " /proc/loadavg`
-		if [ `echo "${CPU_LOAD} < ${TMP}" | bc -l` = 1  ] ; then
-			local CPU_LOAD=${TMP}
-		fi
-
-		[ `echo "${CPU_LOAD} < ${U_MAX_CPU_LOAD}" | bc -l` = 1 ] && break
-		sleep 5m
+	local CPU_LOAD=$(cut -f 1 -d" " /proc/loadavg)
+	while [ $(echo "${CPU_LOAD} > ${U_MAX_CPU_LOAD}" | bc -l) -eq 1 ] ; do
+		local CPU_LOAD=$(cut -f 1 -d" " /proc/loadavg)
+		vigilantSleep 5m
 	done
 }
 
+function listSSDs()
+{
+	
+	# Return array of all hardware devices that supports TRIM
+	for name in /dev/sd[a-z]
+	do
+		if [[ -n $(hdparm -I "${name}" 2>&1 | grep 'TRIM supported') ]]; then 
+			echo ${name}
+		fi
+	done
+	return ${RV}
+}
+
+function listTrimmableMounts()
+{
+	for hdd in $(listSSDs)
+	do
+		mount -l | grep -E "^${hdd}[0-9]*[[:space:]]" | sed -E 's/^.*on (.*) type.*$/\1/g'
+	done
+}
+
+function doTRIM()
+{
+	waitForLowCpuLoad
+	for mount in $(listTrimmableMounts)
+	do
+		fstrim -v "${mount}"
+	done
+}
 
 ##############################
 
+if [ "$1" == "one_shot" ]; then
+	doTRIM
+	exit 0
+fi
+
 echo `date`: FSTRIM DEMON STARTED
 echo ----------------------------
-vigilanSleep ${SLEEP_AT_START}
+vigilantSleep ${SLEEP_AT_START}
 
 while true ; do
 	echo `date`: RUN FSTRIM FOR ${TRIM_DIR}
-	waitForLowCpuLoad
-	time fstrim -v ${TRIM_DIR}
+	doTRIM
 	echo ----------------------------
-	vigilanSleep ${SLEEP_BEFORE_REPEAT}
+	vigilantSleep ${SLEEP_BEFORE_REPEAT}
 done
